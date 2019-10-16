@@ -1,20 +1,46 @@
 #!/usr/bin/env python3
 
-import sys, os
+import sys, os, time
 import logging
 import socket
 import select
 import threading
-import protocol
 
-# 0. command control,
-# 1. resume from break-point
-# 2. Multithreading
-# 3. support Windows.
+
+POLLNULL = 0b00000000
+POLLIN = 0b00000001
+POLLOUT = 0b00000010
+POLLERR = 0b00000100
+POLLHUP = 0b00001000
+POLLNVAL = 0b00010000
+
+
+class Server(object):
+    def __init__(self):
+        if hasattr(select, 'epoll'):
+            self.server = EpollServer()
+        elif hasattr(select, 'kqueue'):
+            self.server = KqueueServer()
+        elif hasattr(select, 'select'):
+            self.server = SelectServer()
+        else:
+            raise Exception('can not find any available module in "select" ')
+        self._fdmap = {}  # (f, handler)
+        self._last_time = time.time()
+        self._periodic_callbacks = []
+        self._stopping = False
+
+
+class SelectServer(object):
+    pass
+
+
+class KqueueServer():
+    pass
 
 
 class EpollServer(object):
-    def __init__(self, port):
+    def __init__(self, port=0):
         self.connections = {}
         self.requests = {}
         self.responses = {}
@@ -77,16 +103,21 @@ class MultiProcServer(object):
         self.port = port
 
 
+def ListenSocket(port, ip=''):
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind((ip, port))
+        sock.listen(5)
+    except Exception as err:
+        print("Something wrong to prepare socket: %s".format(err))
+        sys.exit(1)
+    return sock
+
+
 class ThreadServer(object):
-    def __init__(self, port):
-        try:
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.sock.bind(('', port))
-            self.sock.listen(5)
-        except Exception as err:
-            print("Something wrong to prepare socket: %s".format(err))
-            sys.exit(1)
+    def __init__(self, port, ip4=''):
+        self.sock = ListenSocket(port, ip=ip4)
 
     def run(self):
         connections = {}
