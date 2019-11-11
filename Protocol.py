@@ -100,23 +100,4 @@ class MessageSocket(object):
             del self.conns[self.sock_fd]
 
 
-class SOCKS5(object):
-    # This class is used to package the (client) socket with SOCKS5 protocol.
-    HEAD_STRUCT = ">c256sQ"
-    SIZE_STRUCT = struct.calcsize(HEAD_STRUCT)
 
-    def __init__(self, client_sock, poll):
-        self.sock = client_sock
-        self.epoll = poll
-        self.sock.setblocking(0)
-        self.epoll.register(self.sock.fileno(), select.EPOLLIN)
-
-    def handle_event(self, event):
-        pass
-
-
-
-
-
-class StreamSocket(object):
-    pass
