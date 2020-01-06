@@ -59,7 +59,7 @@ class MessageSocket(object):
                     pass
                 elif data[0] == 0x03: # Tcp stream
                     pass
-            # if client closed, we still get a EPOLLIN and return "".
+            # if client closed, we still get a POLLIN and return "".
             if not data:
                 self.destroy()
 

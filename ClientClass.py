@@ -4,7 +4,7 @@ import sys, os
 import socket
 import threading
 import struct
-import protocol
+import Handler
 
 # 0. command control,
 # 1. resume from break-point
@@ -22,7 +22,7 @@ def reap():
             break
 
 
-def socket_conn(host, port):
+def ConnectSocket(host, port):
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((host, port))
@@ -32,7 +32,7 @@ def socket_conn(host, port):
         sys.exit(1)
 
 
-class TcpClient(object):
+class TcpClientShell(object):
     def __init__(self, host, port):
         self.host = host
         self.port = port
@@ -41,7 +41,7 @@ class TcpClient(object):
     def command(self):
         while True:
             reap()
-            cmd = input("command:> ")
+            cmd = input("Command/MSG:> ")
             if cmd == "send":
                 file = input("file path: ")
                 # fork a new process to send file.
@@ -50,20 +50,20 @@ class TcpClient(object):
                 except Exception:
                     print("something wrong in the fork().")
                 if pid == 0:
-                    filesock = protocol.FileSocket(self.host, self.port)
+                    filesock = Handler.FileSocket(self.host, self.port)
                     filesock.send_file(file)
                 else:
                     print("child pid: ", pid, "would send file.")
             elif cmd == "get":
                 file = input("file path: ")
             else:
-                if 'cmd_socket' not in locals().keys():
-                    cmd_socket = socket_conn('127.0.0.1', 9190)
-                    cmd_socket = protocol.MessageSocket(cmd_socket)
-                    print("A new cmd_socket: ", cmd_socket)
-                # if cmd_socket is link:
+                if 'cmdSocket' not in locals().keys():
+                    cmdSocket = ConnectSocket(self.host, self.port)
+                    cmdSocket = Handler.CMDMessage(cmdSocket)
+                    print("A new cmd_socket: ", cmdSocket)
+                # if cmdSocket is link:
                 state = b'\x01'  # STATE_REQUEST
-                cmd_socket.command_send(state, cmd)
+                cmdSocket.msg_send(state, cmd)
 
 
     def get_file(self):
@@ -78,8 +78,14 @@ class TcpClient(object):
         self.sock.close()
 
 
+class TcpClient(object):
+    def __init__(self, type, host, port):
+        self.host = host
+        self.port = port
+        self.command()
+
 if __name__ == "__main__":
     # server = EpollServer(9190)
     # server.run()
-    client = TcpClient("127.0.0.1", 9190)
+    client = TcpClientCMD("127.0.0.1", 9190)
 

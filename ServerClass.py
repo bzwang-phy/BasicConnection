@@ -6,7 +6,7 @@ import socket
 import select
 import threading
 from collections import defaultdict
-import HandlerBox
+import Handler
 
 
 POLLNULL = 0b00000000
@@ -24,13 +24,14 @@ class Server(object):
         if hasattr(select, 'epoll'):
             self.server = EpollServer()
         elif hasattr(select, 'select'):
-            self.server = SelectServer(port, ip)
+            self.server = SelectServer()
         elif hasattr(select, 'kqueue'):
             self.server = KqueueServer()
         else:
             raise Exception('can not find any available module in "select" ')
+        self.server.init(port)
         self.fdDict = {}   #  fd:(sock,handler)
-        self.handler = HandlerBox.PlainBox
+        self.handler = Handler.CMDMessage
         self.stop = False
     
     def poll(self, timeout=None):
@@ -52,19 +53,41 @@ class Server(object):
                 events = self.poll(TIMEOUT)
             except Exception as e:
                 logging.info(e)
+            # print(events)
             for fd, event in events:
                 if fd == self.server.sockfd:
                     clientSock, clientAddr = self.server.sock.accept()
+                    clientSock.setblocking(0)
                     clientfd = clientSock.fileno()
                     self.fdDict[clientfd] = (clientSock, self.handler(clientSock))
                     self.server.register(clientfd, POLLIN)
                     logging.info("A connection from %s".format(clientAddr))
-                else:
+                elif event & POLLHUP:
+                    self.clear(fd)
+                elif event & POLLIN:
                     clientSock, handler = self.fdDict.get(fd, None)
                     if clientSock:
-                        self.handleEvent(clientSock, event, )
+                        data = clientSock.recv(1)
+                        if data:
+                            handler.in_event(event, data)
+                            self.server.modify(fd, POLLIN | POLLOUT | POLLHUP)
+                        if not data:
+                            handler.notDataN += 1
+                            if handler.notDataN > 10:
+                                self.clear(fd)
                     else:
-                        logging.warning("Wrapped socket doesn't exist.")
+                        logging.warning("Something wrong in clientSock.")
+                elif event & POLLOUT:
+                    pass
+
+    def clear(self, fd):
+        self.server.unregister(fd)
+        sock = self.fdDict.get(fd, None)[0]
+        sock.close()
+        del self.fdDict[fd]
+
+                
+
 
         
 
@@ -72,8 +95,8 @@ class Server(object):
 
 
 class SelectServer(object):
-    def __init__(self, port, ip=''):
-        self.sock = ListenSocket(port, ip)
+    def init(self, port):
+        self.sock = ListenSocket(port, '')
         self.sockfd = self.sock.fileno()
         self.rSet = set(self.sockfd)
         self.wSet = set()
@@ -113,20 +136,26 @@ class KqueueServer():
 
 
 class EpollServer(object):
-    def __init__(self):
+    def init(self, port):
+        self.sock = ListenSocket(port, '')
+        self.sockfd = self.sock.fileno()
+        print("socket {0} is ready.".format(self.sockfd))
         self.epoll = select.epoll()
-    
+        self.epoll.register(self.sockfd, select.EPOLLIN)
+
     # This function is used to obtain all events.
-    def poll(self, timeout=None):
-        events = self.epoll.poll(4)
-        # handle 
+    def poll(self, timeout=4):
+        events = self.epoll.poll(timeout)
         return events
     
     def register(self, fd, mode):
         self.epoll.register(fd, mode)
     
-    def remove(self, fd, mode=None):
+    def unregister(self, fd, mode=None):
         self.epoll.unregister(fd)
+    
+    def modify(self, fd, mode):
+        self.epoll.modify(fd, mode)
 
 
 
